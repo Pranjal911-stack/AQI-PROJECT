@@ -1,0 +1,153 @@
+import requests
+import tkinter as tk
+from tkinter import messagebox
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+from datetime import datetime
+
+# Function to retrieve AQI
+def aqi_checker(city_name):
+    api_key = "561aeff8e2fc76f3235dffdf50c40671b9a09007"
+    url = f"https://api.waqi.info/feed/{city_name}/?token={api_key}"
+
+    response = requests.get(url)
+    if response.status_code == 200:
+        aqi_data = response.json()
+        if "data" in aqi_data and "aqi" in aqi_data["data"]:
+            return aqi_data['data']['aqi']
+        else:
+            return None
+    return None
+
+# Function to retrieve weather information
+def get_weather(city_name):
+    weather_api_key = "fa86cb1d101ed912ad04ddaf49f9395a"
+    weather_url = f"http://api.openweathermap.org/data/2.5/weather?q={city_name}&appid={weather_api_key}&units=metric"
+
+    response = requests.get(weather_url)
+    if response.status_code == 200:
+        weather_data = response.json()
+        temperature = weather_data['main']['temp']
+        humidity = weather_data['main']['humidity']
+        wind_speed = weather_data['wind']['speed']
+        return temperature, humidity, wind_speed
+    else:
+        return None, None, None
+
+# Function to fetch and display data
+def fetch_data():
+    city = city_entry.get().strip()
+    if not city:
+        messagebox.showwarning("Input Error", "Please enter a city name!")
+        return
+
+    aqi_val = aqi_checker(city)
+    temp, humidity, wind = get_weather(city)
+
+    if aqi_val is None or temp is None:
+        messagebox.showerror("Error", "Failed to retrieve data. Check the city name or API keys.")
+        return
+
+    # AQI Classification
+    if 0 <= aqi_val <= 50:
+        classification = "Good"
+    elif 51 <= aqi_val <= 100:
+        classification = "Moderate"
+    elif 101 <= aqi_val <= 200:
+        classification = "Unhealthy for Sensitive Groups"
+    elif 201 <= aqi_val <= 300:
+        classification = "Unhealthy"
+    elif 301 <= aqi_val <= 400:
+        classification = "Very Unhealthy"
+    elif 401 <= aqi_val <= 500:
+        classification = "Hazardous"
+    else:
+        classification = "Unknown"
+
+    # Update historical data for trends
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    history_data.append({"City": city, "Timestamp": timestamp, "AQI": aqi_val})
+
+    # Display results
+    result_text = (
+        f"City: {city}\n"
+        f"AQI: {aqi_val}\n"
+        f"Category: {classification}\n"
+        f"Temperature: {temp}°C\n"
+        f"Humidity: {humidity}%\n"
+        f"Wind Speed: {wind} m/s"
+    )
+    result_label.config(text=result_text)
+
+# Function to show AQI trend
+def show_aqi_trend():
+    if not history_data:
+        messagebox.showinfo("No Data", "No AQI data to show trends.")
+        return
+
+    df = pd.DataFrame(history_data)
+    df["Timestamp"] = pd.to_datetime(df["Timestamp"])
+    city = city_entry.get().strip()
+    city_df = df[df["City"] == city]
+
+    if city_df.empty:
+        messagebox.showinfo("No Data", "No historical data available for this city.")
+        return
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(city_df["Timestamp"], city_df["AQI"], marker="o")
+    plt.title(f"AQI Trend for {city}")
+    plt.xlabel("Timestamp")
+    plt.ylabel("AQI")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+# Function to show AQI heatmap
+def show_aqi_heatmap():
+    if not history_data:
+        messagebox.showinfo("No Data", "No AQI data to generate a heatmap.")
+        return
+
+    df = pd.DataFrame(history_data)
+    pivot_table = df.pivot_table(index="City", columns="Timestamp", values="AQI", aggfunc="mean")
+
+    plt.figure(figsize=(10, 6))
+    sns.heatmap(pivot_table, annot=True, fmt=".0f", cmap="coolwarm", cbar=True)
+    plt.title("AQI Heatmap")
+    plt.xlabel("Timestamp")
+    plt.ylabel("City")
+    plt.tight_layout()
+    plt.show()
+
+# Create the main window
+root = tk.Tk()
+root.title("AQI and Weather Checker")
+
+# Historical data storage
+history_data = []
+
+# Input field
+tk.Label(root, text="Enter City Name:", font=("Arial", 12)).pack(pady=10)
+city_entry = tk.Entry(root, font=("Arial", 12), width=30)
+city_entry.pack(pady=5)
+
+# Fetch button
+fetch_button = tk.Button(root, text="Fetch Data", font=("Arial", 12), command=fetch_data)
+fetch_button.pack(pady=10)
+
+# Show AQI Trend button
+trend_button = tk.Button(root, text="Show AQI Trend", font=("Arial", 12), command=show_aqi_trend)
+trend_button.pack(pady=10)
+
+# Show Heatmap button
+heatmap_button = tk.Button(root, text="Show AQI Heatmap", font=("Arial", 12), command=show_aqi_heatmap)
+heatmap_button.pack(pady=10)
+
+# Result display
+result_label = tk.Label(root, text="", font=("Arial", 12), justify="left", anchor="w")
+result_label.pack(pady=10)
+
+# Run the application
+root.mainloop()
